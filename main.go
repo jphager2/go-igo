@@ -9,16 +9,38 @@ import (
 )
 
 func main() {
+	var player string
+	var stone igo.Stone
+	var board *igo.Board
+	var capturedCount int
+	var captured []igo.StoneGroup
+
 	captures := map[string]int{}
 	passed := false
 	blackTurn := true
-	board := igo.NewBoard(19)
+	koStoneCoord := [2]int{-1, -1}
+
+	for {
+		fmt.Printf("Let's Go! What board size (9, 13, 19): ")
+
+		var input string
+		fmt.Scanln(&input)
+
+		input = strings.TrimSpace(input)
+
+		size, err := strconv.Atoi(input)
+
+		if err != nil {
+			fmt.Printf("Invalid input: `%s`\n", input)
+			continue
+		}
+
+		board = igo.NewBoard(size)
+		break
+	}
 
 	// Play Loop
 	for {
-		var player string
-		var stone igo.Stone
-
 		if blackTurn {
 			player = "Black"
 			stone = igo.Black
@@ -80,21 +102,17 @@ func main() {
 		placedGroup := groups[0]
 		otherGroups := groups[1:]
 
-		captured := false
+		capturedCount = 0
+		captured = make([]igo.StoneGroup, 0, len(otherGroups))
 		for _, sg := range otherGroups {
 			if len(sg.Liberties) == 0 {
-				captured = true
-				for _, sc := range sg.Coords {
-					err = board.Remove(sc[0], sc[1])
-					if err != nil {
-						panic("This cannot happen: tried to remove a stone that doesn't exist")
-					}
-					captures[player]++
-				}
+				captured = append(captured, sg)
+				capturedCount += len(sg.Coords)
 			}
 		}
 
-		if !captured && len(placedGroup.Liberties) == 0 {
+		// Check suicide rule and undo if fails
+		if capturedCount == 0 && len(placedGroup.Liberties) == 0 {
 			err := board.Remove(x, y)
 			if err != nil {
 				panic("This cannot happen: tried to remove a stone that doesn't exist")
@@ -102,6 +120,38 @@ func main() {
 
 			fmt.Printf("Cannot play suicide at `%s`!\n", input)
 			continue
+		}
+
+		// Check ko rule and undo if fails. Also keep track of ko stones
+		if capturedCount == 1 {
+			fmt.Printf("CaptureCount: %v, CapturedGroups: %v\n", capturedCount, len(captured))
+			fmt.Printf("Coord: %v, KoStoneCoord: %v\n", [2]int{x, y}, koStoneCoord)
+
+			if [2]int{x, y} == koStoneCoord {
+				err := board.Remove(x, y)
+				if err != nil {
+					panic("This cannot happen: tried to remove a stone that doesn't exist")
+				}
+
+				fmt.Printf("Cannot play ko at `%s`!\n", input)
+				continue
+			}
+
+			koStoneCoord = captured[0].Coords[0]
+		} else {
+			koStoneCoord = [2]int{-1, -1}
+		}
+
+		// Commit the captures, since there will be no more undos
+		captures[player] += capturedCount
+
+		for _, sg := range captured {
+			for _, sc := range sg.Coords {
+				err = board.Remove(sc[0], sc[1])
+				if err != nil {
+					panic("This cannot happen: tried to remove a stone that doesn't exist")
+				}
+			}
 		}
 
 		blackTurn = !blackTurn
