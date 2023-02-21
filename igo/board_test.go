@@ -66,7 +66,7 @@ func TestGroups(t *testing.T) {
 		t.Errorf("Expected to get 3 groups, got: %v", len(groups))
 	}
 
-	if groups[0].Stone != Black || len(groups[0].Coords) != 25 || !groups[0].Include([2]int{4, 4}) {
+	if groups[0].Stone != Black || len(groups[0].Coords) != 25 || !groups[0].Include(Coord{4, 4}) {
 		t.Errorf("Expected first group to be the placed group of 25 black stones, got %T, %v, %v", groups[0].Stone, len(groups[0].Coords), groups[0].Coords)
 	}
 
@@ -83,7 +83,7 @@ func TestGroups(t *testing.T) {
 		t.Errorf("Expected to get 2 groups, got: %v", len(groups))
 	}
 
-	if groups[0].Stone != White || len(groups[0].Coords) != 41 || !groups[0].Include([2]int{4, 4}) {
+	if groups[0].Stone != White || len(groups[0].Coords) != 41 || !groups[0].Include(Coord{4, 4}) {
 		t.Errorf("Expected first group to be the placed group of 41 white stones, got %T, %v, %v", groups[0].Stone, len(groups[0].Coords), groups[0].Coords)
 	}
 
@@ -105,7 +105,7 @@ func TestGroups(t *testing.T) {
 		t.Errorf("Expected to get 5 groups, got: %v", len(groups))
 	}
 
-	if groups[0].Stone != White || len(groups[0].Coords) != 1 || !groups[0].Include([2]int{4, 4}) {
+	if groups[0].Stone != White || len(groups[0].Coords) != 1 || !groups[0].Include(Coord{4, 4}) {
 		t.Errorf("Expected first group to be the placed group of 1 white stones, got %T, %v, %v", groups[0].Stone, len(groups[0].Coords), groups[0].Coords)
 	}
 }

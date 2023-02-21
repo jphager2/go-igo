@@ -5,6 +5,8 @@ import (
 	"fmt"
 )
 
+type Coord [2]int
+
 type Board struct {
 	Size  int
 	Board [][]Stone
@@ -22,6 +24,18 @@ func NewBoard(size int) *Board {
 	}
 
 	return &Board{Size: size, Board: board}
+}
+
+func (b *Board) Dup() *Board {
+	dup := NewBoard(b.Size)
+
+	for i := 0; i < b.Size; i++ {
+		for j := 0; j < b.Size; j++ {
+			dup.Board[i][j] = b.Board[i][j]
+		}
+	}
+
+	return dup
 }
 
 func (b *Board) Place(stone Stone, x int, y int) error {
@@ -52,20 +66,20 @@ func (b *Board) Remove(x int, y int) error {
 	return nil
 }
 
-func (b *Board) coordsAround(x int, y int) [][2]int {
-	around := make([][2]int, 0, 5)
-	around = append(around, [2]int{x, y})
+func (b *Board) coordsAround(x int, y int) []Coord {
+	around := make([]Coord, 0, 5)
+	around = append(around, Coord{x, y})
 	if x > 0 {
-		around = append(around, [2]int{x - 1, y})
+		around = append(around, Coord{x - 1, y})
 	}
 	if x < b.Size-1 {
-		around = append(around, [2]int{x + 1, y})
+		around = append(around, Coord{x + 1, y})
 	}
 	if y > 0 {
-		around = append(around, [2]int{x, y - 1})
+		around = append(around, Coord{x, y - 1})
 	}
 	if y < b.Size-1 {
-		around = append(around, [2]int{x, y + 1})
+		around = append(around, Coord{x, y + 1})
 	}
 
 	return around
@@ -73,7 +87,7 @@ func (b *Board) coordsAround(x int, y int) [][2]int {
 
 // Get's the color of the stone at coord and fill the group coord and counts
 // the groups liberties. Does not form a group if the stone is a liberty
-func (b *Board) stoneGroup(sg *StoneGroup, coord [2]int) bool {
+func (b *Board) stoneGroup(sg *StoneGroup, coord Coord) bool {
 	if sg.Stone == Liberty {
 		return false
 	}
@@ -104,7 +118,7 @@ func (b *Board) stoneGroup(sg *StoneGroup, coord [2]int) bool {
 	return true
 }
 
-func (b *Board) libGroup(sg *StoneGroup, coord [2]int) bool {
+func (b *Board) libGroup(sg *StoneGroup, coord Coord) bool {
 	if sg.Include(coord) {
 		return false
 	}
@@ -136,7 +150,7 @@ func (b *Board) LibGroups() []StoneGroup {
 				continue
 			}
 
-			coord := [2]int{x, y}
+			coord := Coord{x, y}
 			found := false
 
 			for _, sg := range groups {

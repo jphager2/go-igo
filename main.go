@@ -5,20 +5,67 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/disiqueira/gotree"
 	"github.com/jphager2/go-igo/igo"
 )
 
+type Move struct {
+	Number    int
+	Board     igo.Board
+	Passed    bool
+	BlackTurn bool
+	Move      igo.Coord
+	KoStone   igo.Coord
+	Captures  map[string]int
+	Resigned  bool
+	RootMove  bool
+	HeadMove  *Move
+	Branches  []*Move
+}
+
+func gotreeFromBranches(m *Move, t gotree.Tree) {
+	for _, b := range m.Branches {
+		var stone igo.Stone
+		var move string
+
+		if b.BlackTurn {
+			stone = igo.Black
+		} else {
+			stone = igo.White
+		}
+
+		if b.Resigned {
+			move = "Resign"
+		} else if b.Passed {
+			move = "Pass"
+		} else {
+			move = fmt.Sprintf("%d,%d", b.Move[0], b.Move[1])
+		}
+
+		tree := t.Add(fmt.Sprintf("%v(%d) [%v]", stone, b.Number, move))
+		gotreeFromBranches(b, tree)
+	}
+}
+
+func appendAsBranch(m *Move) {
+	found := false
+
+	for _, b := range m.HeadMove.Branches {
+		found = b.Move == m.Move && b.Resigned == m.Resigned && b.Passed == m.Passed
+	}
+
+	if !found {
+		m.HeadMove.Branches = append(m.HeadMove.Branches, m)
+	}
+}
+
 func main() {
-	var player string
-	var stone igo.Stone
 	var board *igo.Board
-	var capturedCount int
-	var captured []igo.StoneGroup
 
 	captures := map[string]int{}
-	passed := false
 	blackTurn := true
-	koStoneCoord := [2]int{-1, -1}
+	passed := false
+	koStoneCoord := igo.Coord{-1, -1}
 
 	for {
 		fmt.Printf("Let's Go! What board size (9, 13, 19): ")
@@ -39,8 +86,24 @@ func main() {
 		break
 	}
 
+	rootMove := &Move{
+		Board:     *board.Dup(),
+		Passed:    passed,
+		BlackTurn: false,
+		Move:      igo.Coord{-1, -1},
+		KoStone:   koStoneCoord,
+		Captures:  captures,
+		RootMove:  true,
+	}
+	lastMove := rootMove
+
 	// Play Loop
 	for {
+		var player string
+		var stone igo.Stone
+		var capturedCount int
+		var captured []igo.StoneGroup
+
 		if blackTurn {
 			player = "Black"
 			stone = igo.Black
@@ -52,8 +115,12 @@ func main() {
 		fmt.Println(board)
 		fmt.Printf("Black Captures: %v\n", captures["Black"])
 		fmt.Printf("White Captures: %v\n", captures["White"])
-		fmt.Printf("%s's turn. Enter coordintates (`x,y`), `pass`, `resign`: ", player)
+		fmt.Printf(
+			"%s's turn. Enter coordintates (`x,y`), `pass`, `undo`, `resign`, `branches`: ",
+			player,
+		)
 
+		move := igo.Coord{-1, -1}
 		var input string
 		fmt.Scanln(&input)
 
@@ -62,6 +129,18 @@ func main() {
 		if input == "resign" {
 			fmt.Printf("%s has resigned.\n", player)
 			fmt.Println("The game is over.")
+			lastMove = &Move{
+				Number:    lastMove.Number + 1,
+				Board:     *board.Dup(),
+				Passed:    true,
+				BlackTurn: !blackTurn,
+				Move:      move,
+				KoStone:   igo.Coord{-1, -1},
+				Captures:  captures,
+				Resigned:  true,
+				HeadMove:  lastMove,
+			}
+			appendAsBranch(lastMove)
 			break
 		}
 
@@ -71,11 +150,45 @@ func main() {
 			if passed {
 				fmt.Println("The game is over.")
 				break
-			} else {
-				blackTurn = !blackTurn
-				passed = true
+			}
+
+			passed = true
+			blackTurn = !blackTurn
+			lastMove = &Move{
+				Number:    lastMove.Number + 1,
+				Board:     *board.Dup(),
+				Passed:    true,
+				BlackTurn: !blackTurn,
+				Move:      move,
+				KoStone:   igo.Coord{-1, -1},
+				Captures:  captures,
+				HeadMove:  lastMove,
+			}
+			appendAsBranch(lastMove)
+			continue
+		}
+
+		if input == "undo" {
+			if lastMove.RootMove {
+				fmt.Println("Already at the beginning of the game.")
 				continue
 			}
+
+			lastMove = lastMove.HeadMove
+			blackTurn = !blackTurn
+			board = lastMove.Board.Dup()
+			passed = lastMove.Passed
+			koStoneCoord = lastMove.KoStone
+			captures = lastMove.Captures
+			continue
+		}
+
+		if input == "branches" {
+			tree := gotree.New("Game")
+			gotreeFromBranches(rootMove, tree)
+			fmt.Println(tree.Print())
+
+			continue
 		}
 
 		passed = false
@@ -92,6 +205,7 @@ func main() {
 			fmt.Printf("Invalid input: `%s`\n", input)
 			continue
 		}
+		move = igo.Coord{x, y}
 
 		err := board.Place(stone, x, y)
 		if err != nil {
@@ -111,7 +225,7 @@ func main() {
 			}
 		}
 
-		// Check suicide rule and undo if fails
+		// Check suicide rule and revert if fails
 		if capturedCount == 0 && len(placedGroup.Liberties) == 0 {
 			err := board.Remove(x, y)
 			if err != nil {
@@ -122,12 +236,16 @@ func main() {
 			continue
 		}
 
-		// Check ko rule and undo if fails. Also keep track of ko stones
+		// Check ko rule and revert if fails. Also keep track of ko stones
 		if capturedCount == 1 {
-			fmt.Printf("CaptureCount: %v, CapturedGroups: %v\n", capturedCount, len(captured))
-			fmt.Printf("Coord: %v, KoStoneCoord: %v\n", [2]int{x, y}, koStoneCoord)
+			fmt.Printf(
+				"CaptureCount: %v, CapturedGroups: %v\n",
+				capturedCount,
+				len(captured),
+			)
+			fmt.Printf("Coord: %v, KoStoneCoord: %v\n", move, koStoneCoord)
 
-			if [2]int{x, y} == koStoneCoord {
+			if move == koStoneCoord {
 				err := board.Remove(x, y)
 				if err != nil {
 					panic("This cannot happen: tried to remove a stone that doesn't exist")
@@ -139,10 +257,10 @@ func main() {
 
 			koStoneCoord = captured[0].Coords[0]
 		} else {
-			koStoneCoord = [2]int{-1, -1}
+			koStoneCoord = igo.Coord{-1, -1}
 		}
 
-		// Commit the captures, since there will be no more undos
+		// Commit the captures, since there will be no more reverts
 		captures[player] += capturedCount
 
 		for _, sg := range captured {
@@ -155,6 +273,16 @@ func main() {
 		}
 
 		blackTurn = !blackTurn
+		lastMove = &Move{
+			Number:    lastMove.Number + 1,
+			Board:     *board.Dup(),
+			BlackTurn: !blackTurn,
+			Move:      move,
+			KoStone:   koStoneCoord,
+			Captures:  captures,
+			HeadMove:  lastMove,
+		}
+		appendAsBranch(lastMove)
 
 		fmt.Println()
 	}
